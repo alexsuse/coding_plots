@@ -30,12 +30,12 @@ def getMaternSample( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, 
 	sigmaeq = np.zeros((timewindow,order,order))
 	sigmamf = np.zeros((timewindow,order,order))
 	sigmaeq[-1,:,:] = 0.001*np.eye(order)
+	
+	for i in range(timewindow):
+		sigmaeq[i,:,:] = sigmaeq[i-1,:,:] - dt*(np.dot(gam,sigmaeq[i-1,:,:])+np.dot(sigmaeq[i-1,:,:],gam.T)-et)
 	sigmamf[-1,:,:] = sigmaeq[-1,:,:]
 	for i in range(timewindow):
 		sigmamf[i,:,:] = sigmamf[i-1,:,:] - dt*(np.dot(gam,sigmamf[i-1,:,:])+np.dot(sigmamf[i-1,:,:],gam.T)-et) - dt*abar*np.dot(np.array([sigmamf[i-1,:,0]]).T,np.array([sigmamf[i-1,:,0]]))/(alpha**2+sigmamf[i-1,0,0])
-	sigmaeq[-1,:,:] = sigmamf[-1,:,:]
-	for i in range(timewindow):
-		sigmaeq[i,:,:] = sigmaeq[i-1,:,:] - dt*(np.dot(gam,sigmaeq[i-1,:,:])+np.dot(sigmaeq[i-1,:,:],gam.T)-et)
 	for k in range(repetitions):
 		mu = np.zeros((timewindow,order))
 		stim = np.zeros((timewindow,order))
@@ -84,72 +84,6 @@ def getMaternSample( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, 
 		plt.savefig(outname+'.png',dpi=300)
 	return [P,sigmaavg, sigma, sigmamf,sigmaeq]
 
-
-def getMaternPredError(window = 100, gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, dtheta = 0.3, dt = 0.001, repetitions = 100, timewindow = 10000, plot = False):
-	zeta = 2
-	L = 0.8
-	N = 1
-	a = np.zeros(N*N)
-	sigma = 0.001
-	interval = window
-	normalizer = 0
-	prederror = np.zeros((window,order,order))
-	predictor = np.zeros((window,order))
-	e = ge.GaussianEnv(zeta,gamma,eta,L,N,-2.0,-2.0,4.0,4.0,sigma,order)
-	gam = e.getgamma()
-	et = e.geteta()
-	abar  = np.sqrt(2.0*np.pi)*alpha*phi/dtheta
-	code = pn.PoissonCode(np.arange(-4.0,4.0,dtheta),alpha,phi)
-	weight = 1.0/repetitions
-	sigmaavg = np.zeros((timewindow,order,order))
-	sigmamf = np.zeros((timewindow,order,order))
-	sigmamf[-1,:,:] = np.ones_like(sigmamf[-1,:,:])
-	for i in range(timewindow):
-		sigmamf[i,:,:] = sigmamf[i-1,:,:] - dt*(np.dot(gam,sigmamf[i-1,:,:])+np.dot(sigmamf[i-1,:,:],gam.T)-et) - dt*abar*np.dot(np.array([sigmamf[i-1,:,0]]).T,np.array([sigmamf[i-1,:,0]]))/(alpha**2+sigmamf[i-1,0,0])
-	for k in range(repetitions):
-		mu = np.zeros((timewindow,order))
-		s = e.samplestep(dt).ravel()
-		mu[-1,:] = s
-		stim = np.zeros((timewindow,order))
-		sigma = np.zeros((timewindow,order,order))
-		sigma[-1,:,:] = sigmamf[-1,:,:]
-		sigmanew = np.zeros((order,order))
-		spcount = 0
-		Astar = np.zeros((order,order))
-		Astar[0,0] = 1.0/alpha**2
-		for i in range(timewindow):
-			print "run %d of %d, time %d of %d"%(k,repetitions,i,timewindow)
-			s = e.samplestep(dt).ravel()
-			stim[i,:] = s
-			spi = code.spikes(s[0],dt)
-			if sum(spi)>=1:
-				spcount +=1
-				ids = np.where(spi==1)
-				thet = np.zeros_like(mu[i,:])
-				thet[0] = code.neurons[ids[0]].theta[0]
-				sigma[i,:,:] = sigma[i-1,:,:] - np.dot(np.array([sigma[i-1,:,0]]).T,np.array([sigma[i-1,:,0]]))/(alpha**2+sigma[i-1,0,0])
-				mu[i,:] = np.linalg.solve(np.identity(order)+np.dot(sigma[i-1,:,:],Astar),mu[i-1,:]+np.dot(sigma[i-1,:,:],np.dot(Astar,thet)))
-			else:
-				mu[i,:] = mu[i-1,:] - dt*np.dot(gam,mu[i-1,:])
-				sigma[i,:,:] = sigma[i-1,:,:] - dt*(np.dot(gam,sigma[i-1,:,:])+np.dot(sigma[i-1,:,:],gam.T)-et)
-			if i>window:
-				if i%interval==interval-1:
-					normalizer +=1
-					predictor[0,:] = mu[i-window,:]
-					for j in range(1,window):
-						predictor[j,:] = predictor[j-1,:]-dt*np.dot(gam,predictor[j-1,:])
-					for j in range(window):
-						x = predictor[j,:]-stim[i-window+j,:]
-						prederror[j,:,:] += np.dot(np.array([x]).T,np.array([x]))
-		sigmaavg = sigmaavg + sigma*weight
-		print "Run", k, "Firing rate was ", np.float(spcount)/(timewindow*dt), "abar is ", abar
-	prederror = prederror/normalizer
-	sigma_theory = np.zeros((window,order,order))
-	sigma_theory[0,:,:] = prederror[0,:,:]
-	for i in range(1,window):
-		sigma_theory[i,:,:] = sigma_theory[i-1,:,:]  - dt*(np.dot(gam,sigma_theory[i-1,:,:])+np.dot(sigma_theory[i-1,:,:],gam.T)-et)
-	
-	return [prederror,sigma_theory,sigma,predictor,stim,mu]
 
 def getMaternEqVariance( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.2, phi = 1.3, dtheta = 0.3, dt = 0.001, samples = 100, timewindow = 10000, spacesteps = 400, plot = False, Trelax = 1, histmax = 0.8 ):
 	zeta = 2
