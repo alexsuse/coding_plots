@@ -22,7 +22,8 @@ def getMaternSample( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, 
 	
 	et = e.geteta()
 	abar  = np.sqrt(2.0*np.pi)*alpha*phi/dtheta
-	
+	spikes = []	
+	spikers = []
 	code = pn.PoissonCode(np.arange(-4.0,4.0,dtheta),alpha,phi)
 	space = np.arange(-4.0,4.0,8.0/spacesteps)
 	weight = 1.0/repetitions
@@ -54,6 +55,9 @@ def getMaternSample( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, 
 			if sum(spi)>=1:
 				spcount +=1
 				ids = np.where(spi==1)
+				if k==repetitions-1:
+					spikes.append(i)
+					spikers.append(ids[0])
 				thet = np.zeros_like(mu[i,:])
 				thet[0] = code.neurons[ids[0]].theta[0]
 				sigma[i,:,:] = sigma[i-1,:,:] - np.dot(np.array([sigma[i-1,:,0]]).T,np.array([sigma[i-1,:,0]]))/(alpha**2+sigma[i-1,0,0])
@@ -68,18 +72,23 @@ def getMaternSample( gamma = 1.0, eta = 1.0, order = 2, alpha = 0.1, phi = 2.0, 
 		P[:,i] = np.exp(-(space-mu[i,0])**2/(2.0*sigma[i,0,0]))/(np.sqrt(2.0*np.pi*sigma[i,0,0]))		
 	if plot == True:
 		plt.rc('text',usetex=True)
+		plt.rc('font',size=9)
 		fig = plt.figure()
 		ax = fig.add_subplot(2,1,1)
 		ax2 = fig.add_subplot(2,1,2)
 		ts = np.arange(0.0,dt*timewindow,dt)
-		ax.plot(ts,mu[:,0],'b:',ts,stim[:,0],'r')
-		ax.set_title('Second Order OU Process')
+		ax.plot(ts,stim[:,0],'r',label=r'True Stimulus')
+		ax.plot(ts,mu[:,0],'b:',label=r'Posterior Mean')
+		ax.plot(ts[spikes],[code.neurons[i].theta[0] for i in spikers],'yo',label=r'Spikes, aligned by preferred stimulus')
 		ax.set_ylabel(r'Space [cm]')
+		ax.legend()
 		ax.imshow(P,extent=[0,ts[-1],4.0,-4.0],aspect='auto',cmap=cm.gist_yarg)
-		ax2.plot(ts,sigma[:,0,0],'r:',ts,sigmamf[:,0,0],'b',ts,sigmaavg[:,0,0],'k')
-		ax2.set_title('Dynamics of the Posterior Variance')
-		ax2.set_xlabel('Time [s]')
+		ax2.plot(ts,sigma[:,0,0],'r:',label=r'Sample Posterior Variance')
+		ax2.plot(ts,sigmamf[:,0,0],'b',label=r'Mean-field Variance')
+		ax2.plot(ts,sigmaavg[:,0,0],'k',label=r'Average Posterior Variance')
+		ax2.set_xlabel(r'Time [s]')
 		ax2.set_ylabel(r'Space$^2$ [cm$^2$]')
+		ax2.legend()
 		plt.savefig(outname+'.eps')
 		plt.savefig(outname+'.png',dpi=300)
 	return [P,sigmaavg, sigma, sigmamf,sigmaeq]
